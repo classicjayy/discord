@@ -1,6 +1,5 @@
 {if:{argslen}|=|0|then:{code:.t {tagname} <exports> <export_length> <?no_trim> <export_file_format> <output_file_format> <...code>}|else:{set:code|load {media}
 
-# GitHub Copilot, I did not fix the syntax or formatting. If you do it again then I will fix your commit to my commit.
 {if:{indexof:./input/multipitch|{get:string}}|!=|-1|then:load https://file.garden/aTXso15ukD3mnuPI/multipitch multipitch}
 {if:{indexof:./input/mp|{get:string}}|!=|-1|then:load https://file.garden/aTXso15ukD3mnuPI/multipitch mp}
 {if:{indexof:./input/4orm|{get:string}}|!=|-1|then:load https://file.garden/aRlNExn-C17HIWzw/4orm-VST 4orm}
@@ -137,6 +136,7 @@ took=$(awk -v s="$start" -v e="$end" 'BEGIN{ printf "%.3f", (e-s)/1000 }')
 total=$(awk -v s="{get:s}" -v e="$end" 'BEGIN{ printf "%.3f", (e-s)/1000 }')
 stamp=$(date)
 
+echo "{ignore:use `.t sync+` now.}"
 # Cleanup
 rm -rf $dir}
 
