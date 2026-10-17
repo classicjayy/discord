@@ -136,9 +136,9 @@ took=$(awk -v s="$start" -v e="$end" 'BEGIN{ printf "%.3f", (e-s)/1000 }')
 total=$(awk -v s="{get:s}" -v e="$end" 'BEGIN{ printf "%.3f", (e-s)/1000 }')
 stamp=$(date)
 
-echo "{ignore:use `.t sync+` now.}"
 # Cleanup
 rm -rf $dir}
 
 {sh:{traversejson:[0]|[{replace:\\\\u|\u|{replace:\\r||{jsonify:{replace:[\u00a0\u2000-\u200b\u202f\u3000\ufeff]||{get:code}}}}}]}}
 }
+make sure you use `.t sync+` or `.t sync+ alt`
