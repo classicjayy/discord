@@ -1,0 +1,144 @@
+{if:{argslen}|=|0|then:{code:.t {tagname} <exports> <export_length> <?no_trim> <export_file_format> <output_file_format> <...code>}|else:{set:code|load {media}
+
+# GitHub Copilot, I did not fix the syntax or formatting. If you do it again then I will fix your commit to my commit.
+{if:{indexof:./input/multipitch|{get:string}}|!=|-1|then:load https://file.garden/aTXso15ukD3mnuPI/multipitch multipitch}
+{if:{indexof:./input/mp|{get:string}}|!=|-1|then:load https://file.garden/aTXso15ukD3mnuPI/multipitch mp}
+{if:{indexof:./input/4orm|{get:string}}|!=|-1|then:load https://file.garden/aRlNExn-C17HIWzw/4orm-VST 4orm}
+
+start=$(date +%s%3N)
+
+dir=./icfplus
+mkdir -p $dir
+log=$dir/err_$RANDOM.log
+: > "$log"
+
+die() {bracketleft} echo "FFmpeg failed:" >&2; echo "\`\`\`$(head -n 20 "$log")\`\`\`" >&2; exit 1; {bracketright}
+
+vidlen=$(ffprobe -i $FILE_1 -show_entries format=duration -v quiet -of csv="p=0")
+
+exports={arg:0}
+
+# Validate args
+if ! [[ $exports =~ ^-?[1-9][0-9]*$ ]]; then
+   echo "Exports must be a non-zero integer (got '$exports')" >&2
+   exit 1
+fi
+
+abs_exports=$((exports<0?-exports:exports))
+
+dur=$(awk -v vidlen="$vidlen" 'BEGIN{bracketleft} printf {arg:1} {bracketright}')
+if ! awk -v d="$dur" 'BEGIN{bracketleft} exit !(d > 0) {bracketright}'; then
+   echo "Export length must be greater than 0 (got '$dur')" >&2
+   exit 1
+fi
+
+no_trim=$(tr [:upper:] [:lower:] <<< '{arg:2}')
+case $no_trim in
+   true\u007cyes\u007cy\u007c+\u007c1) no_trim=1;;
+   false\u007cno\u007cn\u007c-\u007c0) no_trim=0;;
+   *) echo "No trim must be true or false (got '$no_trim')" >&2; exit 1;;
+esac
+
+ffmpeg -loglevel error -hide_banner -y -stream_loop -1 -i $FILE_1 -c:v utvideo -c:a pcm_s32le -t $dur -threads 0 -movflags +faststart $dir/0.mov 2>> "$log" \u007c\u007c die
+
+if [ '{arg:3}' == 'default' ]; then
+   input_format=$(basename ${bracketleft}FILE_1##*.{bracketright})
+else
+   input_format='{arg:3}'
+fi
+
+if [ '{arg:4}' == 'default' ]; then
+   output_format=$(basename ${bracketleft}FILE_1##*.{bracketright})
+else
+   output_format='{arg:4}'
+fi
+
+# Set up variables
+sr=$(ffprobe -v error -select_streams a:0 -show_entries stream=sample_rate -of default=nokey=1:noprint_wrappers=1 $dir/0.mov)
+fr=$(ffprobe -v error -select_streams v:0 -show_entries stream=r_frame_rate -of default=nokey=1:noprint_wrappers=1 $dir/0.mov)
+d=$(ffprobe -i $dir/0.mov -show_entries format=duration -v quiet -of csv="p=0")
+w=$(ffprobe -v error -select_streams v:0 -show_entries stream=width -of default=nw=1:nk=1 $dir/0.mov)
+h=$(ffprobe -v error -select_streams v:0 -show_entries stream=height -of default=nw=1:nk=1 $dir/0.mov)
+fc=$(ffprobe -v error -select_streams v:0 -show_entries stream=nb_frames -of default=nokey=1:noprint_wrappers=1 $dir/0.mov)
+
+output=./output/icfplus_{uuid}.$output_format
+
+# Render each export
+if [ $no_trim == 1 ]; then
+   loop=0
+   trim=""
+else
+   loop=1
+   trim="-t ${dur}"
+fi
+
+for i in $(seq 1 $abs_exports); do
+   if [ $i == 1 ]; then
+      ffmpeg -loglevel error -stream_loop $loop -hide_banner -y -i "$dir/0.mov" {get:string} $trim -movflags +faststart $dir/1.$input_format 2>> "$log" \u007c\u007c die
+   else
+      ffmpeg -loglevel error -stream_loop $loop -hide_banner -y -i "$dir/$((i-1)).$input_format" {get:string} $trim -movflags +faststart $dir/$i.$input_format 2>> "$log" \u007c\u007c die
+   fi
+done
+
+# Build concat list
+if [ $exports -lt 0 ]; then
+   order=$(seq $abs_exports -1 1)
+else
+   order=$(seq 1 $abs_exports)
+fi
+
+for i in $order; do
+   echo "file '$i.$input_format'"
+done > $dir/concat.txt
+
+# Concat all exports
+case $output_format in
+   "mkv") ffmpeg -loglevel error -hide_banner -y -f concat -safe 0 -i "$dir/concat.txt" -c:v mpeg2video -q:v 1 -c:a flac -pix_fmt yuv420p -bufsize 16M -movflags +faststart -threads 0 $output 2>> "$log" \u007c\u007c die;;
+   "mxf") ffmpeg -loglevel error -hide_banner -y -f concat -safe 0 -i "$dir/concat.txt" -c:v mpeg2video -qscale 1 -qmin 1 -c:a pcm_s16le -ar 48000 -pix_fmt yuv420p -bufsize 16M -movflags +faststart -threads 0 $output 2>> "$log" \u007c\u007c die;;
+   "mov") ffmpeg -loglevel error -hide_banner -y -f concat -safe 0 -i "$dir/concat.txt" -c:v libx264 -profile:v high -level:v 5 -tune film -q:v 1 -crf 30 -g 9 -bf 0 -preset superfast -c:a aac -b:a 256K -pix_fmt yuv420p -bufsize 16M -movflags +faststart -threads 0 $output 2>> "$log" \u007c\u007c die;;
+   "mp4") ffmpeg -loglevel error -hide_banner -y -f concat -safe 0 -i "$dir/concat.txt" -c:v libx264 -profile:v high -level:v 5 -tune film -q:v 1 -crf 30 -g 9 -bf 0 -preset superfast -c:a aac -b:a 256K -pix_fmt yuv420p -bufsize 16M -movflags +faststart -threads 0 $output 2>> "$log" \u007c\u007c die;;
+   "avi") ffmpeg -loglevel error -hide_banner -y -f concat -safe 0 -i "$dir/concat.txt" -c:v mpeg2video -c:a flac -pix_fmt yuv420p -movflags +faststart $output 2>> "$log" \u007c\u007c die;;
+   "webm") ffmpeg -loglevel error -hide_banner -y -f concat -safe 0 -i "$dir/concat.txt" -pix_fmt yuv420p -movflags +faststart $output 2>/dev/null;;
+   *) ffmpeg -loglevel error -hide_banner -y -f concat -safe 0 -i "$dir/concat.txt" -pix_fmt yuv420p -bufsize 16M -movflags +faststart -threads 0 $output 2>> "$log" \u007c\u007c die;;
+esac
+
+if [ ! -f "$output" ]; then
+   die
+fi
+
+# Output info
+vindex=$(ffprobe -v error -select_streams v:0 -show_entries stream=index -of csv=p=0 "$output" 2>/dev/null)
+out_w=$(ffprobe -v error -select_streams v:0 -show_entries stream=width -of default=nw=1:nk=1 $output 2>/dev/null)
+out_h=$(ffprobe -v error -select_streams v:0 -show_entries stream=height -of default=nw=1:nk=1 $output 2>/dev/null)
+out_fr=$(eval "awk 'BEGIN{bracketleft} printf $(ffprobe -v error -select_streams v:0 -show_entries stream=r_frame_rate -of default=nokey=1:noprint_wrappers=1 $output 2>/dev/null) {bracketright}' 2>/dev/null")
+out_d=$(ffprobe -i $output -show_entries format=duration -v quiet -of csv="p=0" 2>/dev/null)
+
+file_size=$(stat -c%s "$output" 2>/dev/null \u007c\u007c echo 0)
+
+if [ $file_size -ge 1048576 ]; then 
+   fs=$(awk -v f="$file_size" 'BEGIN{bracketleft} printf "%.2f MB", f/1048576 {bracketright}')
+else 
+   fs=$(awk -v f="$file_size" 'BEGIN{bracketleft} printf "%.2f KB", f/1024 {bracketright}')
+fi
+
+info="$fs"
+if [ -n "$vindex" ]; then
+   info="$info, ${out_w}x${out_h}, $out_fr fps"
+fi
+
+if [ "$no_trim" = 1 ]; then
+   trim_icon="✅"
+else
+   trim_icon="❌"
+fi
+
+end=$(date +%s%3N)
+took=$(awk -v s="$start" -v e="$end" 'BEGIN{ printf "%.3f", (e-s)/1000 }')
+total=$(awk -v s="{get:s}" -v e="$end" 'BEGIN{ printf "%.3f", (e-s)/1000 }')
+stamp=$(date)
+
+# Cleanup
+rm -rf $dir}
+
+{sh:{traversejson:[0]|[{replace:\\\\u|\u|{replace:\\r||{jsonify:{replace:[\u00a0\u2000-\u200b\u202f\u3000\ufeff]||{get:code}}}}}]}}
+}
